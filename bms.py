@@ -12,16 +12,26 @@ import serial
 import paho.mqtt.client as mqttc
 import logging
 
-logger = logging.getLogger(__name__)
 
-logging.basicConfig(filename='/var/log/bms.log',
-                            filemode='a',
-                            format='%(asctime)s  %(levelname)s %(message)s',
-                            datefmt='%H:%M:%S',
-                            level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s  %(levelname)s %(message)s', datefmt='%H:%M:%S',
+                    handlers=[
+                        logging.FileHandler("/var/log/bms.log"),
+                        logging.StreamHandler()
+                    ],
+                    level=logging.DEBUG)
+logger = logging.getLogger()
+logger.info("Starting bms mqtt broker")
 
-logging.info("Starting bms mqtt broker")
+serialport = '/dev/rfcomm3'
+try:    
+    ser = serial.Serial(port=serialport, baudrate = 9600, parity=serial.PARITY_NONE,
+        stopbits=serial.STOPBITS_ONE, bytesize=serial.EIGHTBITS, timeout = 1)
+except:
+    # we have the wron port, story ends here
+    logger.exception('cannot open serial port {0}, terminating'.format(serialport))
+    exit(1)
 
+logging.debug('connected to serial port {0}'.format(serialport))
 
 mqttc = mqttc.Client(client_id='BMS')
 mqttc.username_pw_set('johnberg', password='jsat1234')
@@ -74,13 +84,6 @@ mqttc.publish("homeassistant/sensor/bms/battery_remain/config", json.dumps(remai
 mqttc.publish("homeassistant/sensor/bms/battery_temp/config", json.dumps(temp_discover))
 time.sleep(1)
 
-ser = serial.Serial(
-    port='/dev/rfcomm3',
-    baudrate = 9600,
-    parity=serial.PARITY_NONE,
-    stopbits=serial.STOPBITS_ONE,
-    bytesize=serial.EIGHTBITS,
-    timeout = 1)
 
 i = 0
 comm = 0
