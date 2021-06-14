@@ -37,19 +37,20 @@ def initMqttClient():
 	        "unit_of_measurement": "A",
         }
 
-        comm_discover = {
-	        "state_topic": "bms/communication",
-	        "icon": "mdi:serial-port",
-	        "name": "BMS Serial communication",
-	        "unique_id": "bms_communication"
-        }
-
         remain_discover = {
 	        "state_topic": "bms/battery_remain",
 	        "icon": "mdi:battery-50",
 	        "name": "BMS Battery Remaining AH",
 	        "unique_id": "bms_battery_remain",
 	        "unit_of_measurement": "AH",
+        }
+
+        power_discover = {
+	        "state_topic": "bms/battery_power",
+	        "icon": "mdi:power-plug-outline",
+	        "name": "BMS Battery Power",
+	        "unique_id": "bms_battery_power",
+	        "unit_of_measurement": "W",
         }
 
         temp_discover = {
@@ -62,8 +63,8 @@ def initMqttClient():
 
         mqttc.publish("homeassistant/sensor/bms/battery_voltage/config", json.dumps(volt_discover))
         mqttc.publish("homeassistant/sensor/bms/battery_current/config", json.dumps(amps_discover))
-        mqttc.publish("homeassistant/sensor/bms/communication/config", json.dumps(comm_discover))
         mqttc.publish("homeassistant/sensor/bms/battery_remain/config", json.dumps(remain_discover))
+        mqttc.publish("homeassistant/sensor/bms/battery_power/config", json.dumps(power_discover))
         mqttc.publish("homeassistant/sensor/bms/battery_temp/config", json.dumps(temp_discover))
         time.sleep(1)
 
@@ -114,6 +115,7 @@ if __name__ == "__main__":
         print('cannot initialize mqtt client, terminating')
         exit(2)
     
+    print('start sending data to the mqtt broker')
     error = False
     while not error:
         resp = readFromPort(ser)
@@ -125,12 +127,13 @@ if __name__ == "__main__":
             volt = struct.unpack('>H', resp[4:6])[0] / 10
             current = struct.unpack('>i', resp[70:74])[0] / 10
             remain = format(struct.unpack('>i', resp[79:83])[0] / 1000000, '.3f')
-            power = struct.unpack('>i', resp[111:115])[0]
+            power = format(struct.unpack('>i', resp[111:115])[0] / 1, '.0f')
             temp = struct.unpack('>h', resp[91:93])[0]            
 
             mqttc.publish("bms/battery_voltage", volt)
             mqttc.publish("bms/battery_current", current)
             mqttc.publish("bms/battery_remain", remain)
+            mqttc.publish("bms/battery_power", power)
             mqttc.publish("bms/battery_temp", temp)
 
             time.sleep(1)
