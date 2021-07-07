@@ -6,6 +6,21 @@ import json
 import serial
 import paho.mqtt.client as mqttClient
 
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(name)s] %(message)s",
+    handlers=[
+        logging.FileHandler("/var/log/bms.log"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+log = logging.getLogger('bms')
+
+MSG_LEN = 140
+
 def openCommPort(port):
     try:    
         return serial.Serial(port=port, baudrate = 9600, parity=serial.PARITY_NONE,
@@ -55,7 +70,7 @@ def initMqttClient():
 
         temp_discover = {
 	        "state_topic": "bms/battery_temp",
-    	    "icon": "mdi:battery-charging-wireless-50",
+    	    "icon": "mdi:thermometer",
 	        "name": "BMS Battery Temperature",
 	        "unique_id": "bms_battery_temp",
 	        "unit_of_measurement": "°C",
@@ -69,7 +84,8 @@ def initMqttClient():
         time.sleep(1)
 
         return mqttc
-    except:
+    except Exception as e:
+        log.error('exception during mqtt publisch: '+ str(e))
         return False
 
 #
@@ -78,24 +94,25 @@ def initMqttClient():
 def readFromPort(ser):
     try:
         if not ser.isOpen():
-            ser.open()
-        
+            ser.open()        
 
-        if ser.write (bytearray.fromhex('DBDB00000000')) != 6:
-            print("did not write command to bms")
+        bytesWritten = ser.write (bytearray.fromhex('DBDB00000000'))
+        if  bytesWritten != 6:
+            log.debug(f'did not write 6 bytes to bms, actually written {bytesWritten}')
 
         l = 0
-        #wait for 140 bytes to be ready (max 100 x 0.2 sec)
-        while l < 100 and ser.in_waiting < 140:
+        #wait for MSG_LEN bytes to be ready (max 100 x 0.2 sec)
+        while l < 100 and ser.in_waiting < MSG_LEN:
             l = l + 1
             time.sleep(0.3)
 
-        if ser.in_waiting != 140:
-            print('bms did not return date, size = %i' % (ser.in_waiting))
-        return ser.read(140)
-    except:
+        bytesWaiting = ser.in_waiting
+        if bytesWaiting != MSG_LEN:
+            log.debug(f'bms did not return {MSG_LEN} bytes, actually {bytesWaiting}')        
+        return ser.read(MSG_LEN)
+    except Exception as e:
+        log.error('exception during read from port: '+ str(e))
         return False
-
 
 #
 #   Main program 
@@ -104,24 +121,30 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--port', nargs='?', 
         help='the comm port to the bms (default: %(default)s)', default='/dev/rfcomm2')
+    parser.add_argument("-v", "--verbose", help="increase output verbosity", action="store_true")
     args = parser.parse_args()
+
+    # setup logging
+    if args.verbose:
+        log.setLevel(logging.DEBUG)
+
     ser = openCommPort(args.port)
     if not ser:
-        print('cannot open serial port %s, terminating' % (args.port))
+        log.error(f'cannot open serial port {args.port}, terminating')
         exit(1)
 
     mqttc = initMqttClient()
     if not mqttc:
-        print('cannot initialize mqtt client, terminating')
+        log.error('cannot initialize mqtt client, terminating')
         exit(2)
     
-    print('start sending data to the mqtt broker')
+    log.info('start sending data to the mqtt broker')
     error = False
     while not error:
         resp = readFromPort(ser)
-        if not resp or len(resp) != 140:
+        if not resp or len(resp) != MSG_LEN:
             #something went wrong
-            print('reading from port failed, try again in 5 seconds')
+            log.debug('reading from port failed, try again in 5 seconds')
             time.sleep(5)
         else:
             volt = struct.unpack('>H', resp[4:6])[0] / 10
@@ -141,5 +164,5 @@ if __name__ == "__main__":
     if ser.isOpen():
         ser.close()
 
-    print('all is ok')
+    log.debug('exit normaly')
     exit(0)
