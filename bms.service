@@ -1,0 +1,10 @@
+[Unit]
+Description=BMS service
+After=rfcomm.service
+Requires=rfcomm.service
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/bms/antbms.py -v
+
+[Install]
+WantedBy=multi-user.target
